@@ -35,19 +35,52 @@ __device__ void SwiGLUCudaKernel(
     int ind_c = 0;
     int ind_a = 0;
     int ind_b = 0;
+
     int tid = threadIdx.x + blockIdx.x * blockDim.x;
+
     if (tid < length) {
-        ind_c += tid % (int)hidden_dim * (int)c_strides_2;
-        ind_a += tid % (int)hidden_dim * (int)a_strides_2;
-        ind_b += tid % (int)hidden_dim * (int)b_strides_2;
-        tid = tid / (int)hidden_dim;
-        ind_c += (tid % (int)seq_len) * (int)c_strides_1;
-        ind_a += (tid % (int)seq_len) * (int)a_strides_1;
-        ind_b += (tid % (int)seq_len) * (int)b_strides_1;
-        tid = tid / (int)seq_len;
-        ind_c += (tid % (int)batch) * (int)c_strides_0;
-        ind_a += (tid % (int)batch) * (int)a_strides_0;
-        ind_b += (tid % (int)batch) * (int)b_strides_0;
+        const ptrdiff_t row_stride =
+            static_cast<ptrdiff_t>(hidden_dim);
+        const ptrdiff_t batch_stride =
+            static_cast<ptrdiff_t>(seq_len * hidden_dim);
+
+        const bool contiguous =
+            (hidden_dim == 1 ||
+             (c_strides_2 == 1 &&
+              a_strides_2 == 1 &&
+              b_strides_2 == 1)) &&
+            (seq_len == 1 ||
+             (c_strides_1 == row_stride &&
+              a_strides_1 == row_stride &&
+              b_strides_1 == row_stride)) &&
+            (batch == 1 ||
+             (c_strides_0 == batch_stride &&
+              a_strides_0 == batch_stride &&
+              b_strides_0 == batch_stride));
+
+        if (contiguous) {
+            ind_c = tid;
+            ind_a = tid;
+            ind_b = tid;
+        } else {
+            int index = tid;
+
+            ind_c += index % (int)hidden_dim * (int)c_strides_2;
+            ind_a += index % (int)hidden_dim * (int)a_strides_2;
+            ind_b += index % (int)hidden_dim * (int)b_strides_2;
+
+            index /= (int)hidden_dim;
+
+            ind_c += (index % (int)seq_len) * (int)c_strides_1;
+            ind_a += (index % (int)seq_len) * (int)a_strides_1;
+            ind_b += (index % (int)seq_len) * (int)b_strides_1;
+
+            index /= (int)seq_len;
+
+            ind_c += (index % (int)batch) * (int)c_strides_0;
+            ind_a += (index % (int)batch) * (int)a_strides_0;
+            ind_b += (index % (int)batch) * (int)b_strides_0;
+        }
 
         T gate = b[ind_b];
         T up = a[ind_a];
