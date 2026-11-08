@@ -488,6 +488,12 @@ class MiniMaxH3TransformerRunner:
         native_inputs = {
             name: self._to_infinicore(tensor) for name, tensor in torch_inputs.items()
         }
+        # H3_FL2VA_TORCH_INFINICORE_SYNC
+        # Ensure PyTorch GPU writes complete before InfiniCore reads inputs.
+        # Correctness baseline: synchronize all visible GPUs.
+        for device_id in range(torch.cuda.device_count()):
+            torch.cuda.synchronize(device_id)
+
         output = self.engine.forward_raw(None, **native_inputs)
         video = output["logits"]
         audio = output["hidden_states"]
